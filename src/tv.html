@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Radical — Sign in on TV</title>
+  <link rel="icon" type="image/jpeg" href="/favicon.jpg">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0a; color: #fff;
+      font-family: 'Roboto Mono', monospace;
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 0;
+    }
+    .logo { font-size: 1.6rem; font-weight: 700; letter-spacing: .12em; color: #ff0099; margin-bottom: 40px; }
+    .card {
+      background: #141414; border: 1px solid #222; border-radius: 16px;
+      padding: 48px 56px; display: flex; gap: 56px; align-items: center;
+      max-width: 820px; width: 100%;
+    }
+    .left { flex: 1; }
+    .step { font-size: 12px; color: #555; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 10px; }
+    .instruction { font-size: 15px; color: #aaa; line-height: 1.6; margin-bottom: 28px; }
+    .url { font-size: 17px; font-weight: 700; color: #fff; letter-spacing: .04em; }
+    .url span { color: #ff0099; }
+    .divider { border: none; border-top: 1px solid #222; margin: 28px 0; }
+    .code-label { font-size: 12px; color: #555; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 14px; }
+    .code {
+      display: flex; gap: 8px; align-items: center;
+    }
+    .code-char {
+      width: 52px; height: 64px;
+      background: #1e1e1e; border: 2px solid #333; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px; font-weight: 700; letter-spacing: 0; color: #fff;
+    }
+    .code-sep { color: #333; font-size: 22px; margin: 0 2px; }
+    .timer { font-size: 12px; color: #555; margin-top: 16px; }
+    .timer span { color: #aaa; }
+    .status { font-size: 13px; color: #666; margin-top: 20px; display: flex; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #333; flex-shrink: 0; }
+    .dot.pulsing { background: #ff0099; animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+    .right { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .qr-wrap {
+      width: 160px; height: 160px; background: #fff; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center; overflow: hidden;
+    }
+    .qr-wrap img { display: block; width: 156px; height: 156px; }
+    .qr-label { font-size: 11px; color: #555; text-align: center; line-height: 1.5; }
+    .success {
+      display: none; flex-direction: column; align-items: center; gap: 16px;
+      text-align: center;
+    }
+    .success-icon { font-size: 56px; }
+    .success h2 { font-size: 22px; font-weight: 700; }
+    .success p  { font-size: 14px; color: #aaa; }
+    @media (max-width: 600px) {
+      .card { flex-direction: column; padding: 32px 24px; gap: 32px; }
+      .right { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="logo">RADICAL</div>
+  <div class="card" id="card">
+    <div class="left">
+      <div class="step">Step 1</div>
+      <div class="instruction">On your phone or computer, go to:</div>
+      <div class="url"><span id="linkUrl">movies.theradicalparty.com</span><span>/link</span></div>
+      <hr class="divider">
+      <div class="step">Step 2</div>
+      <div class="code-label">Enter this code</div>
+      <div class="code" id="codeDisplay"></div>
+      <div class="timer">Expires in <span id="countdown">—</span></div>
+      <div class="status">
+        <div class="dot pulsing" id="statusDot"></div>
+        <span id="statusText">Waiting for sign in…</span>
+      </div>
+    </div>
+    <div class="right">
+      <div class="qr-wrap"><img id="qrImg" src="" alt="QR code"></div>
+      <div class="qr-label">Scan to open<br>the sign-in page</div>
+    </div>
+  </div>
+  <div class="success" id="success">
+    <div class="success-icon">✓</div>
+    <h2>You're signed in!</h2>
+    <p>Taking you to Radical…</p>
+  </div>
+
+  <script>
+    let pollTimer = null;
+    let countdownTimer = null;
+    let currentCode = null;
+    let expiresAt = null;
+
+    async function init() {
+      const res  = await fetch('/api/tv/code', { method: 'POST' });
+      const data = await res.json();
+      currentCode = data.code;
+      expiresAt   = data.expiresAt;
+      renderCode(currentCode);
+      document.getElementById('linkUrl').textContent = location.hostname;
+      if (data.qr) document.getElementById('qrImg').src = data.qr;
+      startCountdown();
+      startPolling();
+    }
+
+    function renderCode(code) {
+      const el = document.getElementById('codeDisplay');
+      el.innerHTML = code.split('').map((c, i) =>
+        (i === 3 ? '<span class="code-sep">–</span>' : '') +
+        `<div class="code-char">${c}</div>`
+      ).join('');
+    }
+
+    function startCountdown() {
+      clearInterval(countdownTimer);
+      countdownTimer = setInterval(() => {
+        const secs = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+        const m = Math.floor(secs / 60), s = secs % 60;
+        document.getElementById('countdown').textContent =
+          `${m}:${String(s).padStart(2, '0')}`;
+        if (secs === 0) { clearInterval(countdownTimer); init(); }
+      }, 1000);
+    }
+
+    function startPolling() {
+      clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        try {
+          const res  = await fetch(`/api/tv/poll/${currentCode}`);
+          const data = await res.json();
+          if (data.status === 'activated') {
+            clearInterval(pollTimer);
+            clearInterval(countdownTimer);
+            // Set cookie manually for Android WebView (fetch responses don't persist Set-Cookie)
+            if (data.token) {
+              document.cookie = `session=${data.token}; path=/; max-age=${data.maxAge || 2592000}; SameSite=Strict`;
+            }
+            document.getElementById('card').style.display = 'none';
+            const s = document.getElementById('success');
+            s.style.display = 'flex';
+            setTimeout(() => { location.href = '/'; }, 1800);
+          } else if (data.status === 'expired') {
+            clearInterval(pollTimer);
+            init();
+          }
+        } catch {}
+      }, 2500);
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Radical — Sign In</title>
+  <link rel="icon" type="image/jpeg" href="/favicon.jpg">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0a; color: #fff; font-family: 'Roboto Mono', monospace; min-height: 100vh; display: flex; flex-direction: column; }
+    .box-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+    .box { width: 100%; max-width: 380px; }
+    .logo { font-size: 2rem; font-weight: 700; letter-spacing: .1em; text-align: center; margin-bottom: 40px; color: #ff0099; }
+    .tabs { display: flex; border-bottom: 1px solid #222; margin-bottom: 28px; }
+    .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; color: #666; font-size: .9rem; font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .2s; }
+    .tab.active { color: #fff; border-color: #ff0099; }
+    .field { margin-bottom: 16px; }
+    .field input { width: 100%; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; color: #fff; font-family: inherit; font-size: .95rem; padding: 12px 14px; outline: none; transition: border-color .2s; }
+    .field input:focus { border-color: #555; }
+    .btn-submit { width: 100%; background: #ff0099; border: none; border-radius: 4px; color: #fff; cursor: pointer; font-family: inherit; font-size: .95rem; font-weight: 700; padding: 13px; margin-top: 4px; transition: background .2s; letter-spacing: .05em; }
+    .btn-submit:hover { background: #cc007a; }
+    .error { background: #2a0a0a; border: 1px solid #8b0000; border-radius: 6px; color: #ff6b6b; font-size: .85rem; margin-bottom: 16px; padding: 10px 14px; }
+    .trial-banner { background: rgba(255,0,153,.08); border: 1px solid rgba(255,0,153,.35); border-radius: 8px; padding: 13px 14px; margin-bottom: 22px; text-align: center; }
+    .trial-banner strong { display: block; color: #fff; font-size: .92rem; margin-bottom: 5px; }
+    .trial-banner span { display: block; color: #bbb; font-size: .78rem; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="box-wrap"><div class="box">
+    <div class="logo">RADICAL</div>
+    <div class="tabs">
+      <div class="tab active" data-tab="login">Sign In</div>
+      <div class="tab" data-tab="signup">Sign Up</div>
+    </div>
+    <div id="error" class="error" hidden></div>
+    <div id="trialBanner" class="trial-banner" hidden>
+      <strong>✨ Start watching free for 24 hours</strong>
+      <span>No credit card required · full access · cancel anytime</span>
+    </div>
+    <div class="field"><input id="username" type="text" placeholder="Username or email" autocomplete="username"></div>
+    <div class="field"><input id="password" type="password" placeholder="Password" autocomplete="current-password"></div>
+    <div class="field" id="emailField" hidden><input id="email" type="email" placeholder="Email address" autocomplete="email"></div>
+    <div class="field" id="inviteField" hidden><input id="inviteCode" type="text" placeholder="Invite code (optional)" autocomplete="off" style="text-transform:uppercase;letter-spacing:.1em"></div>
+    <button class="btn-submit" id="submit">Sign In</button>
+    <div style="text-align:center;margin-top:20px">
+      <a href="/tv" style="font-size:12px;color:#555;text-decoration:none;transition:color .2s" onmouseover="this.style.color='#aaa'" onmouseout="this.style.color='#555'">📺 Signing in on a TV?</a>
+    </div>
+  </div></div>
+  <script>
+    // Redirect already-logged-in users to home instead of showing login form
+    fetch('/api/auth/me').then(r => { if (r.ok) location.replace('/'); }).catch(() => {});
+
+    let mode = 'login';
+    let inviteOnly = true; // default; fetched from server below
+    const refCode = new URLSearchParams(location.search).get('ref') || '';
+    if (refCode) document.getElementById('inviteCode').value = refCode.toUpperCase();
+
+    function updateInviteField() {
+      const isSignup = mode === 'signup';
+      document.getElementById('emailField').hidden = !isSignup;
+      document.getElementById('inviteField').hidden = !isSignup;
+      document.getElementById('trialBanner').hidden = !isSignup;
+      // Login accepts a username OR email; signup creates a username.
+      document.getElementById('username').placeholder = isSignup ? 'Username' : 'Username or email';
+      document.getElementById('inviteCode').placeholder = inviteOnly ? 'Invite code' : 'Invite code (optional)';
+    }
+
+    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+      mode = t.dataset.tab;
+      document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === mode));
+      document.getElementById('submit').textContent = mode === 'login' ? 'Sign In' : 'Start Free Trial';
+      document.getElementById('error').hidden = true;
+      updateInviteField();
+    }));
+
+    // Fetch invite-only setting from server
+    fetch('/api/public/settings').then(r => r.json()).then(d => {
+      inviteOnly = d.inviteOnly ?? true;
+      updateInviteField();
+    }).catch(() => {});
+
+    // Auto-switch to signup if ref param present
+    if (refCode) {
+      document.querySelector('[data-tab="signup"]').click();
+    }
+
+    document.getElementById('submit').addEventListener('click', async () => {
+      const username   = document.getElementById('username').value.trim();
+      const password   = document.getElementById('password').value;
+      const email      = document.getElementById('email').value.trim();
+      const inviteCode = document.getElementById('inviteCode').value.trim().toUpperCase();
+      const errEl      = document.getElementById('error');
+      errEl.hidden = true;
+      if (!username || !password) { errEl.textContent = 'Please fill in all fields'; errEl.hidden = false; return; }
+      const body = mode === 'signup' ? { username, password, email, inviteCode } : { username, password };
+      try {
+        const res  = await fetch(`/api/auth/${mode}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const data = await res.json();
+        if (!res.ok) { errEl.textContent = data.error || 'Something went wrong'; errEl.hidden = false; return; }
+        location.href = '/';
+      } catch { errEl.textContent = 'Network error'; errEl.hidden = false; }
+    });
+    document.getElementById('password').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('submit').click(); });
+    document.getElementById('inviteCode').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase(); });
+  </script>
+</body>
+</html>

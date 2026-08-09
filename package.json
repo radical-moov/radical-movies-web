@@ -1,0 +1,11 @@
+{
+  "name": "radical-movies-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Radical Movies frontend (SPA) — split from radical-movies.",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node build.mjs && npx --yes serve dist -l 5173"
+  }
+}

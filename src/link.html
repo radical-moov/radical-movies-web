@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Radical — Sign in on TV</title>
+  <link rel="icon" type="image/jpeg" href="/favicon.jpg">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0a; color: #fff;
+      font-family: 'Roboto Mono', monospace;
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .logo { font-size: 1.6rem; font-weight: 700; letter-spacing: .12em; color: #ff0099; margin-bottom: 40px; }
+    .card {
+      background: #141414; border: 1px solid #222; border-radius: 16px;
+      padding: 40px 36px; width: 100%; max-width: 380px;
+      display: flex; flex-direction: column; gap: 0;
+    }
+    h2 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .sub { font-size: 13px; color: #666; margin-bottom: 32px; line-height: 1.6; }
+    .code-label { font-size: 11px; color: #555; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 10px; }
+    .code-input {
+      width: 100%; background: #1e1e1e; border: 2px solid #333; border-radius: 10px;
+      color: #fff; font-family: inherit; font-size: 28px; font-weight: 700;
+      padding: 16px 20px; outline: none; letter-spacing: .3em; text-align: center;
+      text-transform: uppercase; transition: border-color .2s;
+    }
+    .code-input:focus { border-color: #ff0099; }
+    .code-input::placeholder { color: #333; letter-spacing: .2em; font-size: 22px; }
+    .btn {
+      width: 100%; background: #ff0099; border: none; border-radius: 8px;
+      color: #fff; cursor: pointer; font-family: inherit; font-size: 15px;
+      font-weight: 700; padding: 16px; margin-top: 16px;
+      transition: background .2s; letter-spacing: .05em;
+    }
+    .btn:hover { background: #cc007a; }
+    .btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+    .error {
+      background: #2a0a0a; border: 1px solid #8b0000; border-radius: 8px;
+      color: #ff6b6b; font-size: 13px; margin-top: 16px; padding: 12px 16px;
+      display: none;
+    }
+    .success-state {
+      display: none; flex-direction: column; align-items: center;
+      text-align: center; gap: 16px; padding: 16px 0;
+    }
+    .success-icon { font-size: 52px; }
+    .success-state h2 { font-size: 20px; }
+    .success-state p  { font-size: 13px; color: #aaa; line-height: 1.6; }
+    .not-logged-in {
+      display: none; flex-direction: column; gap: 16px; text-align: center;
+    }
+    .not-logged-in p { font-size: 14px; color: #aaa; line-height: 1.6; }
+    .btn-outline {
+      width: 100%; background: transparent; border: 1px solid #444; border-radius: 8px;
+      color: #fff; cursor: pointer; font-family: inherit; font-size: 14px;
+      font-weight: 600; padding: 14px; transition: border-color .2s;
+    }
+    .btn-outline:hover { border-color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="logo">RADICAL</div>
+
+  <div class="card" id="formCard">
+    <h2>Sign in on your TV</h2>
+    <p class="sub">Enter the code shown on your TV screen.</p>
+    <div class="code-label">Code from TV</div>
+    <input class="code-input" id="codeInput" type="text" maxlength="6" placeholder="ABC123" autocomplete="off" autocorrect="off" spellcheck="false">
+    <button class="btn" id="confirmBtn">Confirm</button>
+    <div class="error" id="error"></div>
+  </div>
+
+  <div class="card" id="successCard" style="display:none">
+    <div class="success-state" style="display:flex">
+      <div class="success-icon">✓</div>
+      <h2>Your TV is signed in!</h2>
+      <p>You can close this page.<br>Your TV will continue automatically.</p>
+    </div>
+  </div>
+
+  <div class="card" id="authCard" style="display:none">
+    <div class="not-logged-in" style="display:flex">
+      <div style="font-size:40px">📺</div>
+      <p>You need to be signed in to your Radical account to activate a TV device.</p>
+      <a href="/login"><button class="btn">Sign in to Radical</button></a>
+      <p style="font-size:12px;color:#444">After signing in, come back to this page.</p>
+    </div>
+  </div>
+
+  <script>
+    const params  = new URLSearchParams(location.search);
+    const preCode = params.get('code') || '';
+
+    async function checkAuth() {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.status === 401) {
+          document.getElementById('formCard').style.display = 'none';
+          document.getElementById('authCard').style.display = '';
+          return false;
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function init() {
+      const authed = await checkAuth();
+      if (!authed) return;
+      if (preCode) {
+        const input = document.getElementById('codeInput');
+        input.value = preCode.toUpperCase();
+        // Auto-submit if code is 6 chars from QR scan
+        if (preCode.length === 6) setTimeout(submit, 400);
+      }
+    }
+
+    const input = document.getElementById('codeInput');
+    input.addEventListener('input', () => {
+      input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+
+    document.getElementById('confirmBtn').addEventListener('click', submit);
+
+    async function submit() {
+      const code = input.value.trim().toUpperCase();
+      const err  = document.getElementById('error');
+      const btn  = document.getElementById('confirmBtn');
+      err.style.display = 'none';
+      if (code.length !== 6) { err.textContent = 'Enter the full 6-character code'; err.style.display = ''; return; }
+      btn.disabled = true;
+      btn.textContent = 'Confirming…';
+      try {
+        const res  = await fetch('/api/tv/activate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          err.textContent = data.error || 'Something went wrong';
+          err.style.display = '';
+          btn.disabled = false;
+          btn.textContent = 'Confirm';
+          return;
+        }
+        document.getElementById('formCard').style.display = 'none';
+        document.getElementById('successCard').style.display = '';
+      } catch {
+        err.textContent = 'Network error — try again';
+        err.style.display = '';
+        btn.disabled = false;
+        btn.textContent = 'Confirm';
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

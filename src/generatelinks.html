@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Radical — Generate Links</title>
+  <link rel="icon" type="image/jpeg" href="/favicon.jpg">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --pink: #ff0099; --pink2: #cc007a; --bg: #0a0a0a; --card: #141414; --border: #2a2a2a; }
+    body { background: var(--bg); color: #fff; font-family: 'Roboto Mono', monospace; min-height: 100vh; padding: 24px; }
+    .wrap { max-width: 780px; margin: 0 auto; }
+    .logo { font-size: 1.6rem; font-weight: 700; letter-spacing: .1em; color: var(--pink); margin-bottom: 4px; }
+    .sub { color: #666; font-size: .8rem; margin-bottom: 28px; }
+
+    /* Gate */
+    #gate { max-width: 360px; margin: 12vh auto 0; text-align: center; }
+    #gate input { width: 100%; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; color: #fff; font-family: inherit; font-size: .95rem; padding: 12px 14px; outline: none; margin: 16px 0; }
+    #gate input:focus { border-color: #555; }
+
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 22px; margin-bottom: 24px; }
+    .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: #fff; }
+    label { display: block; font-size: .78rem; color: #888; margin: 0 0 6px 2px; }
+    .row { display: flex; gap: 14px; flex-wrap: wrap; }
+    .col { flex: 1; min-width: 150px; margin-bottom: 14px; }
+    input[type=text], input[type=number] { width: 100%; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; color: #fff; font-family: inherit; font-size: .95rem; padding: 11px 13px; outline: none; }
+    input:focus { border-color: #555; }
+    .hint { font-size: .72rem; color: #555; margin-top: 5px; }
+    .btn { background: var(--pink); border: none; border-radius: 6px; color: #fff; cursor: pointer; font-family: inherit; font-size: .9rem; font-weight: 700; padding: 12px 20px; letter-spacing: .04em; transition: background .2s; }
+    .btn:hover { background: var(--pink2); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-sm { padding: 6px 12px; font-size: .75rem; font-weight: 500; }
+    .btn-ghost { background: transparent; border: 1px solid #333; color: #aaa; }
+    .btn-ghost:hover { background: #1e1e1e; border-color: #555; }
+    .btn-danger { background: transparent; border: 1px solid #5a1a1a; color: #ff6b6b; }
+    .btn-danger:hover { background: #2a0a0a; }
+
+    .feedback { font-size: .85rem; margin-top: 12px; min-height: 20px; }
+    .feedback.ok { color: #5fd75f; }
+    .feedback.error { color: #ff6b6b; }
+
+    .result { background: #10160f; border: 1px solid #234023; border-radius: 8px; padding: 16px; margin-top: 16px; display: none; }
+    .result.show { display: block; }
+    .result .gencode { font-size: 1.4rem; font-weight: 700; letter-spacing: .12em; color: #5fd75f; }
+    .copyrow { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+    .copyrow input { flex: 1; font-size: .8rem; }
+
+    table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid #222; }
+    th { color: #777; font-weight: 500; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; }
+    td .code { font-weight: 700; letter-spacing: .06em; }
+    .badge { font-size: .68rem; padding: 2px 7px; border-radius: 10px; }
+    .badge.on { background: #10300f; color: #5fd75f; }
+    .badge.off { background: #2a2a2a; color: #888; }
+    .actions { display: flex; gap: 6px; justify-content: flex-end; }
+    .muted { color: #555; }
+    .empty { color: #555; text-align: center; padding: 24px; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <!-- Password gate -->
+  <div id="gate">
+    <div class="logo">RADICAL</div>
+    <div class="sub">Enter password to continue</div>
+    <input id="gatePass" type="password" placeholder="Password" autocomplete="off">
+    <button class="btn" id="gateBtn" style="width:100%">Enter</button>
+    <div class="feedback error" id="gateErr"></div>
+  </div>
+
+  <!-- Tool -->
+  <div class="wrap" id="tool" hidden>
+    <div class="logo">Generate Links</div>
+    <div class="sub">Create custom promo offers — free days now, then a set monthly price via Stripe.</div>
+
+    <div class="card">
+      <h2>New offer</h2>
+      <div class="row">
+        <div class="col">
+          <label>Free days</label>
+          <input id="fFreeDays" type="number" min="0" step="1" value="10">
+          <div class="hint">Days of free access before billing starts</div>
+        </div>
+        <div class="col">
+          <label>Monthly price (USD)</label>
+          <input id="fMonthly" type="number" min="0" step="0.01" value="10">
+          <div class="hint">Charged per month after the free period</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col">
+          <label>Custom code <span class="muted">(optional)</span></label>
+          <input id="fCode" type="text" placeholder="Auto-generated if blank" style="text-transform:uppercase" maxlength="16">
+        </div>
+        <div class="col">
+          <label>Max uses <span class="muted">(optional)</span></label>
+          <input id="fMaxUses" type="number" min="1" step="1" placeholder="Unlimited">
+        </div>
+      </div>
+      <div class="col" style="min-width:100%">
+        <label>Notes <span class="muted">(optional)</span></label>
+        <input id="fNotes" type="text" placeholder="e.g. Reddit launch promo">
+      </div>
+      <button class="btn" id="createBtn">Generate offer</button>
+      <div class="feedback" id="createFb"></div>
+
+      <div class="result" id="result">
+        <div class="muted" style="font-size:.72rem;margin-bottom:4px">CODE</div>
+        <div class="gencode" id="resCode"></div>
+        <div class="copyrow">
+          <input id="resLink" type="text" readonly>
+          <button class="btn btn-sm btn-ghost" onclick="copyField('resLink', this)">Copy link</button>
+          <button class="btn btn-sm btn-ghost" onclick="copyField('resCode', this)">Copy code</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Existing offers</h2>
+      <div id="listWrap"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
+
+  <script>
+    let PASS = '';
+
+    function headers() { return { 'Content-Type': 'application/json', 'x-gen-key': PASS }; }
+
+    // ── Gate ──────────────────────────────────────────────────────────────
+    async function tryEnter(pass) {
+      // Validate by hitting the protected list endpoint.
+      const res = await fetch('/api/generatelinks/offers', { headers: { 'x-gen-key': pass } });
+      if (res.status === 403) return false;
+      if (!res.ok) return false;
+      PASS = pass;
+      sessionStorage.setItem('genpass', pass);
+      document.getElementById('gate').hidden = true;
+      document.getElementById('tool').hidden = false;
+      renderList(await res.json());
+      return true;
+    }
+
+    document.getElementById('gateBtn').addEventListener('click', async () => {
+      const pass = document.getElementById('gatePass').value;
+      const err = document.getElementById('gateErr');
+      err.textContent = '';
+      if (!(await tryEnter(pass))) err.textContent = 'Wrong password';
+    });
+    document.getElementById('gatePass').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('gateBtn').click();
+    });
+
+    // Auto-enter if we already have a valid password this session
+    const saved = sessionStorage.getItem('genpass');
+    if (saved) tryEnter(saved);
+
+    // ── Create ────────────────────────────────────────────────────────────
+    document.getElementById('createBtn').addEventListener('click', async () => {
+      const fb = document.getElementById('createFb');
+      fb.className = 'feedback'; fb.textContent = '';
+      const freeDays = parseInt(document.getElementById('fFreeDays').value, 10) || 0;
+      const dollars  = parseFloat(document.getElementById('fMonthly').value);
+      if (!dollars || dollars <= 0) { fb.className = 'feedback error'; fb.textContent = 'Enter a monthly price'; return; }
+      const body = {
+        freeDays,
+        monthlyAmount: Math.round(dollars * 100),
+        code:    document.getElementById('fCode').value.trim().toUpperCase() || undefined,
+        maxUses: parseInt(document.getElementById('fMaxUses').value, 10) || undefined,
+        notes:   document.getElementById('fNotes').value.trim() || undefined,
+      };
+      const btn = document.getElementById('createBtn');
+      btn.disabled = true; btn.textContent = 'Generating…';
+      try {
+        const res = await fetch('/api/generatelinks/offers', { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+        const data = await res.json();
+        if (!res.ok) { fb.className = 'feedback error'; fb.textContent = data.error || 'Failed'; return; }
+        const link = location.origin + '/upgrade?offer=' + encodeURIComponent(data.offer.code);
+        document.getElementById('resCode').textContent = data.offer.code;
+        document.getElementById('resLink').value = link;
+        document.getElementById('result').classList.add('show');
+        fb.className = 'feedback ok'; fb.textContent = 'Offer created.';
+        document.getElementById('fCode').value = '';
+        loadList();
+      } catch { fb.className = 'feedback error'; fb.textContent = 'Network error'; }
+      finally { btn.disabled = false; btn.textContent = 'Generate offer'; }
+    });
+
+    // ── List ──────────────────────────────────────────────────────────────
+    async function loadList() {
+      const res = await fetch('/api/generatelinks/offers', { headers: headers() });
+      if (res.ok) renderList(await res.json());
+    }
+
+    function money(cents) { return '$' + (cents / 100).toFixed(2).replace(/\.00$/, ''); }
+
+    function renderList(offers) {
+      const wrap = document.getElementById('listWrap');
+      if (!offers.length) { wrap.innerHTML = '<div class="empty">No offers yet.</div>'; return; }
+      offers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      let html = '<table><thead><tr><th>Code</th><th>Offer</th><th>Uses</th><th>Status</th><th></th></tr></thead><tbody>';
+      for (const o of offers) {
+        const usage = o.uses + (o.maxUses ? ' / ' + o.maxUses : '');
+        const free  = o.freeDays > 0 ? o.freeDays + 'd free, ' : '';
+        html += `<tr>
+          <td><span class="code">${o.code}</span>${o.notes ? '<br><span class="muted" style="font-size:.7rem">' + esc(o.notes) + '</span>' : ''}</td>
+          <td>${free}${money(o.monthlyAmount)}/mo</td>
+          <td>${usage}</td>
+          <td><span class="badge ${o.active === false ? 'off' : 'on'}">${o.active === false ? 'off' : 'active'}</span></td>
+          <td><div class="actions">
+            <button class="btn btn-sm btn-ghost" data-copy="${o.code}">Link</button>
+            <button class="btn btn-sm btn-ghost" data-toggle="${o.code}">${o.active === false ? 'Enable' : 'Disable'}</button>
+            <button class="btn btn-sm btn-danger" data-del="${o.code}">Del</button>
+          </div></td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+      wrap.innerHTML = html;
+
+      wrap.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => {
+        const link = location.origin + '/upgrade?offer=' + encodeURIComponent(b.dataset.copy);
+        navigator.clipboard.writeText(link); flash(b, 'Copied!');
+      });
+      wrap.querySelectorAll('[data-toggle]').forEach(b => b.onclick = async () => {
+        await fetch('/api/generatelinks/offers/' + encodeURIComponent(b.dataset.toggle), { method: 'PATCH', headers: headers() });
+        loadList();
+      });
+      wrap.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+        if (!confirm('Delete offer ' + b.dataset.del + '? Existing subscribers are unaffected.')) return;
+        await fetch('/api/generatelinks/offers/' + encodeURIComponent(b.dataset.del), { method: 'DELETE', headers: headers() });
+        loadList();
+      });
+    }
+
+    function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+    function flash(btn, msg) { const t = btn.textContent; btn.textContent = msg; setTimeout(() => btn.textContent = t, 1200); }
+    function copyField(id, btn) { const el = document.getElementById(id); navigator.clipboard.writeText(el.value || el.textContent); flash(btn, 'Copied!'); }
+  </script>
+</body>
+</html>
