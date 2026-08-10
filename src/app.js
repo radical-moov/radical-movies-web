@@ -2227,8 +2227,39 @@ function setupPlayerControls() {
               : code === 2 ? 'Network error loading video — check connection or try again'
               : 'Video failed to load — try re-downloading or refreshing';
     toast(msg);
-    logClient('error', `video error (code ${code})`, { title: playerTitle?.textContent || '', detail: videoEl.error?.message || '' });
+    logClient('error', `video error (code ${code})`, {
+      title: playerTitle?.textContent || '',
+      detail: videoEl.error?.message || '',
+      airplay: !!videoEl.webkitCurrentPlaybackTargetIsWireless, // was it casting when it failed?
+      net: videoEl.networkState, ready: videoEl.readyState,
+      t: Math.round(videoEl.currentTime || 0),
+      file: (() => { try { return new URL(videoEl.currentSrc || videoEl.src).pathname.split('/').pop(); } catch { return ''; } })(),
+    });
   });
+
+  // ── AirPlay diagnostics ──────────────────────────────────────────────────
+  // Turns "I think AirPlay is broken" into hard data: logs engage/disengage and
+  // a genuine stall (still buffering >8s while casting and not paused). Normal
+  // startup buffering is ignored so healthy sessions stay quiet.
+  videoEl.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', () => {
+    logClient('info', `airplay ${videoEl.webkitCurrentPlaybackTargetIsWireless ? 'engaged' : 'disengaged'}`,
+      { title: playerTitle?.textContent || '' });
+  });
+  let _apStallTimer = null;
+  const clearApStall = () => { if (_apStallTimer) { clearTimeout(_apStallTimer); _apStallTimer = null; } };
+  videoEl.addEventListener('waiting', () => {
+    if (!videoEl.webkitCurrentPlaybackTargetIsWireless || _apStallTimer) return;
+    _apStallTimer = setTimeout(() => {
+      _apStallTimer = null;
+      if (videoEl.paused) return;
+      logClient('error', 'airplay stall (>8s buffering)', {
+        title: playerTitle?.textContent || '', t: Math.round(videoEl.currentTime || 0),
+        ready: videoEl.readyState, net: videoEl.networkState,
+      });
+    }, 8000);
+  });
+  videoEl.addEventListener('playing', clearApStall);
+  videoEl.addEventListener('canplay', clearApStall);
 }
 
 function fmtTime(s) {
