@@ -61,6 +61,12 @@ for (const file of fs.readdirSync(SRC).filter((f) => f.endsWith('.html'))) {
   const mode = PILL_PAGES.has(file) ? ' data-mode="pill"' : '';
   const footer = `<script src="${FOOTER_URL}"${mode} defer></script>`;
   html = html.includes('</body>') ? html.replace('</body>', `  ${footer}\n</body>`) : html + footer;
+  // Opt every <script> out of Cloudflare Rocket Loader. On the tunneled edge
+  // (Phase 5) CF applies zone-level Rocket Loader to proxied HTML, which mangles
+  // `type="module"` (app.js) and breaks the SPA. data-cfasync="false" is CF's
+  // documented opt-out; it's an inert no-op on the Worker-fronted prod and on any
+  // non-CF host, so the built HTML stays portable and cutover-safe.
+  html = html.replace(/<script(?![^>]*\bdata-cfasync\b)/g, '<script data-cfasync="false"');
   fs.writeFileSync(path.join(OUT, file), html);
 }
 
