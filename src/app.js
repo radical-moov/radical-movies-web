@@ -2242,8 +2242,19 @@ function setupPlayerControls() {
   // a genuine stall (still buffering >8s while casting and not paused). Normal
   // startup buffering is ignored so healthy sessions stay quiet.
   videoEl.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', () => {
-    logClient('info', `airplay ${videoEl.webkitCurrentPlaybackTargetIsWireless ? 'engaged' : 'disengaged'}`,
+    const wireless = videoEl.webkitCurrentPlaybackTargetIsWireless;
+    logClient('info', `airplay ${wireless ? 'engaged' : 'disengaged'}`,
       { title: playerTitle?.textContent || '' });
+    // AirPlaying video to an Apple TV delegates volume to the TV/receiver: iOS
+    // ignores <video>.volume and only honors mute, and there is no web API for
+    // the AirPlay target's volume (unlike Chromecast's Cast SDK). So the slider
+    // is a dead control while casting — disable it and point the user at the
+    // real control. Mute still works. Re-enabled on disengage.
+    if (volSlider) {
+      volSlider.disabled = wireless;
+      volSlider.title = wireless ? 'Volume is controlled by your TV / Apple TV remote' : '';
+    }
+    if (wireless) toast('🔊 Adjust volume with your TV or Apple TV remote');
   });
   let _apStallTimer = null;
   const clearApStall = () => { if (_apStallTimer) { clearTimeout(_apStallTimer); _apStallTimer = null; } };
