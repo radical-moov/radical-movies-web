@@ -741,6 +741,12 @@ function renderJobs(jobs) {
     const retryBtn = isErr
       ? `<button class="btn btn-ghost btn-sm" style="color:var(--yellow)" data-retry="${j.id}">↺ Retry</button>`
       : '';
+    // Prioritise: jump a waiting job to the front of the download queue. Shows a
+    // ★ (click to undo) once flagged; otherwise a ⬆ on still-waiting jobs.
+    const isWaiting = j.status === 'queued' || j.status === 'pending';
+    const prioBtn = j.priority
+      ? `<button class="btn btn-ghost btn-sm" style="color:var(--yellow)" data-deprioritize="${j.id}" title="Prioritised — click to undo">★</button>`
+      : (isWaiting ? `<button class="btn btn-ghost btn-sm" data-prioritize="${j.id}" title="Jump the download queue">⬆</button>` : '');
 
     const subMsg = j.status === 'error'
       ? (j.error || j.message || '').slice(0, 80)
@@ -769,11 +775,11 @@ function renderJobs(jobs) {
     return `<tr data-job-id="${j.id}">
       <td><input type="checkbox" class="job-chk" data-id="${j.id}"></td>
       <td>
-        <div class="title-cell">${esc(j.title)}</div>
+        <div class="title-cell">${j.priority ? '<span style="color:var(--yellow)" title="Prioritised">★</span> ' : ''}${esc(j.title)}</div>
         <div class="title-year">${j.year || ''}${subMsg ? ' · <span style="color:' + (j.status==='error'?'var(--red)':'#888') + '">' + esc(subMsg) + '</span>' : ''}</div>
       </td>
       <td>${userLabel}</td>
-      <td><span class="badge badge-${j.status}">${j.status}</span></td>
+      <td><span class="badge badge-${j.status}">${j.status}</span>${j.status === 'queued' && j.queuePosition ? ` <span class="mono muted" title="Queue position">#${j.queuePosition}</span>` : ''}</td>
       <td>${prog}</td>
       <td><span class="mono">${j.quality || '—'}</span></td>
       <td><span class="mono muted">${fmtSize(j.size)}</span></td>
@@ -784,6 +790,7 @@ function renderJobs(jobs) {
       <td><span class="mono ${j.readyAt ? 'green' : 'muted'}">${upTime}</span></td>
       <td style="display:flex;gap:6px;align-items:center">
         ${streamBtn}
+        ${prioBtn}
         ${retryBtn}
         <button class="btn btn-ghost btn-sm" data-delete="${j.id}">✕</button>
       </td>
@@ -1107,6 +1114,17 @@ document.getElementById('btnDeleteSelected')?.addEventListener('click', async ()
   btn.disabled = false;
   appendLog(`[LOG] Deleted ${ids.length} jobs`);
 });
+document.getElementById('btnPrioritizeSelected')?.addEventListener('click', async () => {
+  const ids = getCheckedIds();
+  if (!ids.length) return;
+  const btn = document.getElementById('btnPrioritizeSelected');
+  btn.textContent = `Prioritising ${ids.length}…`;
+  btn.disabled = true;
+  await Promise.all(ids.map(id => fetch(`/api/admin/job/${id}/prioritize`, { method: 'POST' })));
+  btn.textContent = '⬆ Prioritise Selected';
+  btn.disabled = false;
+  appendLog(`[LOG] Prioritised ${ids.length} jobs`);
+});
 
 ['jobSearch', 'jobStatusFilter', 'jobTypeFilter'].forEach(id => {
   document.getElementById(id)?.addEventListener('input', () => renderJobs(_lastJobs));
@@ -1121,6 +1139,21 @@ document.getElementById('jobsTbody').addEventListener('click', async (e) => {
     retry.disabled = true;
     await fetch(`/api/admin/job/${retry.dataset.retry}/retry`, { method: 'POST' });
     appendLog(`[LOG] Retrying job ${retry.dataset.retry}`);
+    return;
+  }
+  const prio = e.target.closest('[data-prioritize]');
+  if (prio) {
+    prio.disabled = true; prio.textContent = '…';
+    const r = await fetch(`/api/admin/job/${prio.dataset.prioritize}/prioritize`, { method: 'POST' }).then(x => x.json()).catch(() => ({}));
+    appendLog(`[LOG] Prioritised job ${prio.dataset.prioritize}${r.promoted ? ' — jumped the live queue' : ' (flagged; applies on next slot/restart)'}`);
+    return;
+  }
+  const deprio = e.target.closest('[data-deprioritize]');
+  if (deprio) {
+    deprio.disabled = true;
+    await fetch(`/api/admin/job/${deprio.dataset.deprioritize}/deprioritize`, { method: 'POST' });
+    appendLog(`[LOG] Removed priority from job ${deprio.dataset.deprioritize}`);
+    return;
   }
 });
 document.getElementById('jobsTbody').addEventListener('change', (e) => {
@@ -1204,18 +1237,21 @@ function updateSelectionUI() {
   const btnSel   = document.getElementById('btnSelectAll');
   const btnNone  = document.getElementById('btnSelectNone');
   const btnDel   = document.getElementById('btnDeleteSelected');
+  const btnPrio  = document.getElementById('btnPrioritizeSelected');
   const chkAll   = document.getElementById('chkAll');
   if (ids.length === 0) {
     if (selCount) selCount.textContent = '';
     if (btnSel)  btnSel.hidden  = false;
     if (btnNone) btnNone.hidden = true;
     if (btnDel)  btnDel.hidden  = true;
+    if (btnPrio) btnPrio.hidden = true;
     if (chkAll)  { chkAll.checked = false; chkAll.indeterminate = false; }
   } else {
     if (selCount) selCount.textContent = `(${ids.length} selected)`;
     if (btnSel)  btnSel.hidden  = ids.length === total;
     if (btnNone) btnNone.hidden = false;
     if (btnDel)  btnDel.hidden  = false;
+    if (btnPrio) btnPrio.hidden = false;
     if (chkAll)  { chkAll.checked = ids.length === total; chkAll.indeterminate = ids.length < total; }
   }
 }
