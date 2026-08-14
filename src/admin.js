@@ -770,7 +770,11 @@ function renderJobs(jobs) {
 
     const userLabel = j.user === 'system'
       ? '<span class="muted" style="font-size:10px">catalog</span>'
-      : `<span style="color:#aaa">${esc(j.user || '—')}</span>`;
+      : j.user
+        ? `<span style="color:#aaa">${esc(j.user)}</span>`
+        : (j.requestedBy
+            ? `<span style="color:#777" title="From a season pack requested by ${esc(j.requestedBy)}">↳ ${esc(j.requestedBy)}</span>`
+            : '<span style="color:#666" title="Season-pack episode (no requester recorded)">↳ pack</span>');
 
     return `<tr data-job-id="${j.id}">
       <td><input type="checkbox" class="job-chk" data-id="${j.id}"></td>
