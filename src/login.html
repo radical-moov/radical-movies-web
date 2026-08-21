@@ -98,6 +98,7 @@
         const res  = await fetch(`/api/auth/${mode}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const data = await res.json();
         if (!res.ok) { errEl.textContent = data.error || 'Something went wrong'; errEl.hidden = false; return; }
+        if (data.token) { try { localStorage.setItem('rm_token', data.token); } catch (e) {} } // cross-site Bearer auth
         location.href = '/';
       } catch { errEl.textContent = 'Network error'; errEl.hidden = false; }
     });

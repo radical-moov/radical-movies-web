@@ -1,7 +1,7 @@
 // Admin API auth is now session-based (an admin cookie is sent automatically on
 // same-origin requests). Access is gated server-side by requireAdmin.
 
-const socket = io(window.API_BASE || undefined, { transports: ['polling'], withCredentials: true });
+const socket = io(window.API_BASE || undefined, { transports: ['polling'], withCredentials: true, auth: { token: (window.RM_TOKEN && window.RM_TOKEN()) || undefined } });
 const connDot = document.getElementById('connDot');
 
 socket.on('connect',    () => connDot.classList.add('connected'));

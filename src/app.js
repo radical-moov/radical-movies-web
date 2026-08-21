@@ -140,7 +140,7 @@ const videoEl        = $('videoEl');
 
 // ── Socket setup ───────────────────────────────────────────────────────────
 function initSocket() {
-  socket = io(window.API_BASE || undefined, { transports: ['polling'], withCredentials: true });
+  socket = io(window.API_BASE || undefined, { transports: ['polling'], withCredentials: true, auth: { token: (window.RM_TOKEN && window.RM_TOKEN()) || undefined } });
 
   socket.on('connect', () => {
     if (currentJobId) socket.emit('watch:join', currentJobId);
@@ -293,6 +293,7 @@ function startExpiryBanner(endsAt, type) {
 
 logoutBtn.addEventListener('click', async () => {
   await fetch('/api/auth/logout', { method: 'POST' });
+  try { localStorage.removeItem('rm_token'); } catch (e) {} // clear cross-site Bearer token
   location.href = '/login';
 });
 

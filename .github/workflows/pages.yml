@@ -29,7 +29,9 @@ jobs:
           node-version: 22
       - name: Build static bundle
         env:
-          API_BASE: ${{ vars.API_BASE || 'https://api.radicalmovies.org' }}
+          # API stays on our VM, reached via movies.theradicalparty.com (cross-site →
+          # the SPA authenticates with a Bearer token, not cookies). Override via repo var.
+          API_BASE: ${{ vars.API_BASE || 'https://movies.theradicalparty.com' }}
           PAGES_CNAME: ${{ vars.PAGES_CNAME || 'radicalmovies.org' }}
         run: node build.mjs && test -f dist/index.html && test -f dist/CNAME
       - uses: actions/configure-pages@v5
