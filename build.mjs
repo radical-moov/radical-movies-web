@@ -19,6 +19,11 @@ const SRC = path.join(__dirname, 'src');
 const OUT = path.join(__dirname, 'dist');
 
 const FOOTER_URL = process.env.FOOTER_URL || 'https://theradicalparty.com/footer.js';
+// API origin for the static frontend. '' = same-origin (edge/local). On GitHub
+// Pages set API_BASE=https://api.radicalmovies.org so /api + /socket.io resolve
+// to the backend cross-origin. PAGES_CNAME writes dist/CNAME for the custom domain.
+const API_BASE = process.env.API_BASE || '';
+const PAGES_CNAME = process.env.PAGES_CNAME || '';
 const HASHED = ['app.js', 'admin.js', 'style.css']; // assets to content-hash
 const PILL_PAGES = new Set(['login.html', 'tv.html']); // corner-badge footer mode
 
@@ -40,12 +45,24 @@ for (const file of HASHED) {
   rename[file] = out;
 }
 
+// 1b) rmconfig.js — bake the API base in, content-hash it, inject first in <head>.
+let rmconfigOut = null;
+{
+  const p = path.join(SRC, 'rmconfig.js');
+  if (fs.existsSync(p)) {
+    const js = fs.readFileSync(p, 'utf8').replaceAll('__API_BASE__', API_BASE);
+    rmconfigOut = hashedName('rmconfig.js', hash8(Buffer.from(js)));
+    fs.writeFileSync(path.join(OUT, rmconfigOut), js);
+  }
+}
+
 // 2) Recursively copy everything else (skip the raw hashed sources).
 function copyDir(rel = '') {
   for (const entry of fs.readdirSync(path.join(SRC, rel), { withFileTypes: true })) {
     const r = path.join(rel, entry.name);
     if (entry.isDirectory()) { fs.mkdirSync(path.join(OUT, r), { recursive: true }); copyDir(r); continue; }
     if (rel === '' && HASHED.includes(entry.name)) continue;     // hashed above
+    if (rel === '' && entry.name === 'rmconfig.js') continue;    // hashed above (1b)
     if (rel === '' && entry.name.endsWith('.html')) continue;    // processed below
     fs.copyFileSync(path.join(SRC, r), path.join(OUT, r));
   }
@@ -58,6 +75,10 @@ for (const file of fs.readdirSync(SRC).filter((f) => f.endsWith('.html'))) {
   for (const [from, to] of Object.entries(rename)) {
     html = html.replaceAll(from, to);
   }
+  // Inject rmconfig first in <head> (installs the API-base fetch shim before any
+  // inline script runs). Point the socket.io client lib at the API when cross-origin.
+  if (rmconfigOut) html = html.replace('<head>', `<head>\n  <script src="/${rmconfigOut}"></script>`);
+  if (API_BASE) html = html.replaceAll('/socket.io/socket.io.js', `${API_BASE}/socket.io/socket.io.js`);
   const mode = PILL_PAGES.has(file) ? ' data-mode="pill"' : '';
   const footer = `<script src="${FOOTER_URL}"${mode} defer></script>`;
   html = html.includes('</body>') ? html.replace('</body>', `  ${footer}\n</body>`) : html + footer;
@@ -70,4 +91,8 @@ for (const file of fs.readdirSync(SRC).filter((f) => f.endsWith('.html'))) {
   fs.writeFileSync(path.join(OUT, file), html);
 }
 
-console.log(`[build] dist/ ready — hashed ${Object.keys(rename).length} assets, footer=${FOOTER_URL}`);
+// 4) GitHub Pages: custom-domain CNAME + disable Jekyll processing.
+if (PAGES_CNAME) fs.writeFileSync(path.join(OUT, 'CNAME'), PAGES_CNAME + '\n');
+fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
+
+console.log(`[build] dist/ ready — hashed ${Object.keys(rename).length} assets, footer=${FOOTER_URL}, API_BASE=${API_BASE || '(same-origin)'}, cname=${PAGES_CNAME || '(none)'}`);

@@ -140,7 +140,7 @@ const videoEl        = $('videoEl');
 
 // ── Socket setup ───────────────────────────────────────────────────────────
 function initSocket() {
-  socket = io({ transports: ['polling'] });
+  socket = io(window.API_BASE || undefined, { transports: ['polling'], withCredentials: true });
 
   socket.on('connect', () => {
     if (currentJobId) socket.emit('watch:join', currentJobId);
