@@ -2,6 +2,10 @@ const IMG = 'https://image.tmdb.org/t/p';
 const POSTER = (p) => p ? `${IMG}/w342${p}` : '/no-poster.svg';
 const BACKDROP = (b) => b ? `${IMG}/w1280${b}` : '';
 
+// Button label for titles we don't hold yet — sets the expectation that a
+// request isn't instant (it downloads + transcodes in the background).
+const REQUEST_LABEL = '⬇ Request (10m–60m)';
+
 // ── Shareable per-title URLs ─────────────────────────────────────────────────
 // Opening a title reflects it in the address bar as /watch/{type}/{id}/{slug}
 // (mirrors the server's SEO slug). We only replaceState — the history entry is
@@ -536,7 +540,7 @@ function renderHero(m) {
     heroWatch.disabled    = true;
     heroWatch.onclick     = null;
   } else {
-    heroWatch.textContent = '⬇ Request';
+    heroWatch.textContent = REQUEST_LABEL;
     heroWatch.disabled    = false;
     heroWatch.onclick     = () => queueWatch(m);
   }
@@ -552,6 +556,16 @@ function startHeroRotation() {
 }
 
 // ── Row rendering ──────────────────────────────────────────────────────────
+// A title is "ready" when we already hold a streamable copy — either in the
+// public catalog or in this user's library. These jump to the front of a row so
+// one-click-to-play titles lead, and slower Request-only titles follow.
+function titleIsReady(m, type = 'movie') {
+  const id = m?.id;
+  if (id == null) return false;
+  if (catalogData.some(c => c.tmdbId === id && c.type === type && c.streamUrl)) return true;
+  return libraryData.some(j => j.tmdbId === id && j.type === type && j.status === 'ready' && j.streamUrl);
+}
+
 function renderRow(trackId, movies, type = 'movie') {
   const track = $(trackId);
   if (!track) return;
@@ -561,7 +575,11 @@ function renderRow(trackId, movies, type = 'movie') {
   const section = track.closest('.row');
   if (!movies || !movies.length) { if (section) section.hidden = true; return; }
   if (section) section.hidden = false;
-  for (const m of movies.slice(0, 20)) {
+  // Stable ready-first ordering: sort() is stable, so titles keep their original
+  // relative order within the ready and not-ready groups (we sort before slicing
+  // so a ready title past position 20 still surfaces).
+  const ordered = [...movies].sort((a, b) => (titleIsReady(b, type) ? 1 : 0) - (titleIsReady(a, type) ? 1 : 0));
+  for (const m of ordered.slice(0, 20)) {
     track.appendChild(createCard(m, type));
   }
 }
@@ -728,7 +746,7 @@ async function openModal(tmdbId) {
       modalWatch.textContent = '✓ Requested';
       modalWatch.disabled = true;
     } else {
-      modalWatch.textContent = '⬇ Request';
+      modalWatch.textContent = REQUEST_LABEL;
       modalWatch.disabled = false;
       modalWatch.onclick = () => queueWatch(m);
     }
@@ -1083,7 +1101,7 @@ async function queueWatch(movie) {
     });
     const data = await res.json();
     if (!res.ok) {
-      modalWatch.textContent = '⬇ Request';
+      modalWatch.textContent = REQUEST_LABEL;
       modalWatch.disabled = false;
       toast(data.error || 'Failed to queue');
       return;
@@ -1105,7 +1123,7 @@ async function queueWatch(movie) {
       : `📥 Requested ${title} — ready in 5 min–1 hour. It'll show up in your Library.`);
     fetchLibrary();
   } catch (err) {
-    modalWatch.textContent = '⬇ Request';
+    modalWatch.textContent = REQUEST_LABEL;
     modalWatch.disabled = false;
     console.error('[queueWatch] error:', err);
     toast('Failed to queue: ' + (err?.message || err));
