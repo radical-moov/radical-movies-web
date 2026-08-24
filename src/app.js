@@ -2,6 +2,25 @@ const IMG = 'https://image.tmdb.org/t/p';
 const POSTER = (p) => p ? `${IMG}/w342${p}` : '/no-poster.svg';
 const BACKDROP = (b) => b ? `${IMG}/w1280${b}` : '';
 
+// ── Shareable per-title URLs ─────────────────────────────────────────────────
+// Opening a title reflects it in the address bar as /watch/{type}/{id}/{slug}
+// (mirrors the server's SEO slug). We only replaceState — the history entry is
+// still the one ensureAwayState() pushed, so Back closes the modal as before.
+// Copy that URL / reload and the app re-opens the same title (see handleDeepLink).
+function slugifyTitle(s) {
+  return String(s || '').toLowerCase().normalize('NFKD')
+    .replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 80) || 'title';
+}
+function setTitleUrl(type, id, title, year) {
+  const y = year ? `-${year}` : '';
+  try { history.replaceState(history.state, '', `/watch/${type}/${id}/${slugifyTitle(title)}${y}`); } catch {}
+}
+function clearTitleUrl() {
+  if (/^\/watch\//.test(location.pathname)) {
+    try { history.replaceState(history.state, '', '/'); } catch {}
+  }
+}
+
 // TMDB direct browser calls (bypasses server IP restrictions)
 const TMDB_KEY = '0330d4c885535dbcbfc3a1085e098571';
 const TMDB = 'https://api.themoviedb.org/3';
@@ -316,6 +335,20 @@ async function init() {
   loadAll();
   loadListsRow();
   restoreVideoState();
+  handleDeepLink();
+}
+
+// On boot, if the URL is a shared per-title link (/watch/{type}/{id}/...), open
+// that title's modal. We reset the address bar to "/" first so the underlying
+// history entry is the homepage (Back / close leave you there, not on a dangling
+// /watch URL). Wait for the catalog so the Play/Request button state is correct.
+async function handleDeepLink() {
+  const m = location.pathname.match(/^\/watch\/(movie|tv)\/(\d+)/);
+  if (!m) return;
+  const [, type, id] = m;
+  try { history.replaceState(history.state, '', '/'); } catch {}
+  if (!catalogData.length) await fetchCatalog().catch(() => {});
+  type === 'tv' ? openTVModal(Number(id)) : openModal(Number(id));
 }
 
 // Newly-released movies usually only have CAM/telesync/scam torrents for the
@@ -743,6 +776,7 @@ async function openModal(tmdbId) {
 
     modalWrap.hidden = false;
     document.body.style.overflow = 'hidden';
+    setTitleUrl('movie', m.id, m.title, m.release_date?.slice(0, 4));
   } catch (e) {
     toast('Failed to load movie details');
   }
@@ -752,6 +786,7 @@ function closeModal() {
   modalWrap.hidden = true;
   document.body.style.overflow = '';
   currentMovie = null;
+  clearTitleUrl();
 }
 
 modalClose.addEventListener('click', closeModal);
@@ -893,6 +928,7 @@ async function openTVModal(showId) {
 
     tvModalWrap.hidden = false;
     document.body.style.overflow = 'hidden';
+    setTitleUrl('tv', show.id, show.name, show.first_air_date?.slice(0, 4));
   } catch (e) {
     toast('Failed to load show details');
     console.error(e);
@@ -981,6 +1017,7 @@ function closeTVModal() {
   tvModalWrap.hidden = true;
   document.body.style.overflow = '';
   currentShow = null;
+  clearTitleUrl();
 }
 
 tvModalClose.addEventListener('click', closeTVModal);
@@ -1199,6 +1236,24 @@ function notifyReady(jobId, streamUrl, title) {
 // resulting `error` event (empty src) isn't shown as an "unsupported format" toast.
 let _playerTearingDown = false;
 
+// Label the stream on AirPlay / external displays as "Title — RADICAL". AirPlay
+// reads the <video title> attribute; MediaSession drives the iOS Control Center /
+// lock-screen "Now Playing" card (with poster art) — set both so every surface
+// shows the brand alongside the title.
+function setAirplayTitle(title, posterPath) {
+  const label = title ? `${title} — RADICAL` : 'RADICAL';
+  try { videoEl.title = label; } catch {}
+  try {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: label,
+        artist: 'RADICAL',
+        artwork: posterPath ? [{ src: POSTER(posterPath), sizes: '342x513', type: 'image/jpeg' }] : [],
+      });
+    }
+  } catch {}
+}
+
 function openPlayer(streamUrl, title, posterPath = null, meta = null) {
   ensureAwayState();
   cancelAutoNext();
@@ -1227,6 +1282,7 @@ function openPlayer(streamUrl, title, posterPath = null, meta = null) {
   document.body.style.overflow = 'hidden';
   playerTitle.textContent = title || '';
   _currentPosterPath = posterPath;
+  setAirplayTitle(title, posterPath);
   // Derive TV context if the caller didn't pass it (Library/Continue Watching/
   // auto-next/resume all call openPlayer without meta), so the Episodes button
   // works no matter how playback started.
