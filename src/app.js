@@ -773,6 +773,9 @@ async function openModal(tmdbId) {
     listBtn.addEventListener('click', () => openAddToListModal(m.id, 'movie', m.title, m.poster_path, m.release_date?.slice(0, 4)));
     modalActions.appendChild(listBtn);
 
+    // ▶ Trailer (self-hosted when available, else YouTube fallback)
+    addTrailerButton(modalActions, 'modalTrailerBtn', 'movie', m.id, m.videos);
+
     // Star rating
     const ratingWrap = document.createElement('div');
     ratingWrap.id = 'modalRatingWrap';
@@ -809,6 +812,56 @@ function closeModal() {
 
 modalClose.addEventListener('click', closeModal);
 modalBackdrop.addEventListener('click', closeModal);
+
+// ── Trailers ─────────────────────────────────────────────────────────────────
+// Prefer our self-hosted copy (/api/trailer); fall back to a YouTube embed until
+// the backfill has downloaded it. Deliberately NOT the main player, so watching a
+// trailer never records watch progress or continue-watching state.
+function pickTrailerKey(videos) {
+  const list = (videos?.results || (Array.isArray(videos) ? videos : [])).filter(v => v && v.site === 'YouTube' && v.key);
+  if (!list.length) return null;
+  const score = v => (v.type === 'Trailer' ? 100 : v.type === 'Teaser' ? 50 : 10)
+    + (v.official ? 20 : 0) + (/^en/i.test(v.iso_639_1 || '') ? 10 : 0) + Math.min(8, (v.size || 0) / 240);
+  return list.map(v => ({ v, s: score(v) })).sort((a, b) => b.s - a.s)[0].v.key;
+}
+
+async function playTrailer(type, tmdbId, videos) {
+  ensureAwayState();
+  let data = { source: 'none' };
+  try { data = await fetch(`/api/trailer/${type}/${tmdbId}`).then(r => r.ok ? r.json() : { source: 'none' }); } catch {}
+  const inner = $('trailerInner');
+  const ytKey = data.ytKey || pickTrailerKey(videos);
+  if (data.source === 'self' && data.url) {
+    inner.innerHTML = `<video src="${data.url}" controls autoplay playsinline x-webkit-airplay="allow"></video>`;
+  } else if (ytKey) {
+    inner.innerHTML = `<iframe src="https://www.youtube.com/embed/${ytKey}?autoplay=1&rel=0" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>`;
+  } else {
+    toast('No trailer available'); return;
+  }
+  $('trailerOverlay').hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closeTrailer() {
+  const inner = $('trailerInner');
+  if (inner) inner.innerHTML = ''; // stops the <video>/<iframe> playing
+  $('trailerOverlay').hidden = true;
+  if (modalWrap.hidden && tvModalWrap.hidden && playerOverlay.hidden) document.body.style.overflow = '';
+}
+$('trailerClose').addEventListener('click', closeTrailer);
+$('trailerOverlay').addEventListener('click', (e) => { if (e.target === $('trailerOverlay')) closeTrailer(); });
+
+// Build the "▶ Trailer" modal button when a title actually has a trailer.
+function addTrailerButton(container, btnId, type, tmdbId, videos) {
+  document.getElementById(btnId)?.remove();
+  if (!pickTrailerKey(videos)) return;
+  const btn = document.createElement('button');
+  btn.id = btnId;
+  btn.className = 'btn btn-wl';
+  btn.textContent = '▶ Trailer';
+  btn.addEventListener('click', () => playTrailer(type, tmdbId, videos));
+  container.appendChild(btn);
+}
 
 // Render a comma-separated list of cast members as clickable links (top 5).
 // Clicking one opens that person's filmography (their movies/TV).
@@ -955,6 +1008,9 @@ async function openTVModal(showId) {
       tvListBtn.textContent = '+ List';
       tvListBtn.addEventListener('click', () => openAddToListModal(show.id, 'tv', show.name, show.poster_path, show.first_air_date?.slice(0, 4)));
       tvModalActionsEl.appendChild(tvListBtn);
+
+      // ▶ Trailer (self-hosted when available, else YouTube fallback)
+      addTrailerButton(tvModalActionsEl, 'tvModalTrailerBtn', 'tv', show.id, show.videos);
     }
 
     // Star rating
@@ -3773,6 +3829,7 @@ function ensureAwayState() {
   try { history.pushState({ rmAway: 1 }, ''); } catch {}
 }
 function returnHome() {
+  if (!$('trailerOverlay').hidden) closeTrailer();
   if (!playerOverlay.hidden) closePlayer();
   if (!modalWrap.hidden)     closeModal();
   if (!tvModalWrap.hidden)   closeTVModal();
