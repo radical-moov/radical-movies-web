@@ -1328,6 +1328,37 @@ a.nav-link { text-decoration: none; }
 }
 .episode-item:last-child { border-bottom: none; }
 
+/* Continue-watching highlights ------------------------------------------------ */
+/* Watched episodes recede; the one in progress gets an accent rail + progress. */
+.episode-item.episode-watched .episode-title,
+.episode-item.episode-watched .episode-overview,
+.episode-item.episode-watched .episode-meta { opacity: .5; }
+.episode-check { color: #46d369; margin-left: 5px; font-weight: 700; }
+.episode-tag { color: #46d369; font-weight: 700; }
+
+.episode-item.episode-inprogress {
+  border-left: 3px solid var(--red);
+  margin-left: -13px;
+  padding-left: 10px;
+}
+.episode-continue {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--red);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-top: 8px;
+}
+.episode-progress {
+  height: 4px;
+  background: #333;
+  border-radius: 2px;
+  margin-top: 5px;
+  max-width: 320px;
+  overflow: hidden;
+}
+.episode-progress-fill { height: 100%; background: var(--red); border-radius: 2px; }
+
 .episode-num {
   font-size: 12px;
   font-weight: 700;
@@ -1376,6 +1407,10 @@ a.nav-link { text-decoration: none; }
   flex-shrink: 0;
   transition: all .2s;
   line-height: 1;
+  /* Keep the play/request button clear of the sticky modal close (✕), which
+     floats in the same top-right column — when a row scrolls under it the ✕
+     would otherwise steal the click. This gutter shifts the button left of it. */
+  margin-right: 26px;
 }
 .episode-add-btn:hover {
   background: var(--red);

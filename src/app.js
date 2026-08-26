@@ -847,6 +847,40 @@ document.addEventListener('click', (e) => {
 let currentShow = null;
 let currentTVSeason = 1;
 
+// Per-show watch state for the episode list: which episodes are finished
+// ("watched") and which one the user is mid-way through ("continue"). Populated
+// when the TV modal opens (see loadTvWatchState) and read by loadEpisodes.
+let _tvWatchedFrac = {};   // stored jobId  -> furthest-reached fraction (0..1)
+let _tvProgressByEp = {};  // "season-episode" -> { pct, position } for THIS show
+const EP_WATCHED_FRAC = 0.85;  // ≥ this of the runtime reached ⇒ treat as watched
+
+async function loadTvWatchState(showId) {
+  _tvWatchedFrac = {};
+  _tvProgressByEp = {};
+  try {
+    const [prog, watched] = await Promise.all([
+      fetch('/api/progress').then(r => r.ok ? r.json() : {}).catch(() => ({})),
+      fetch('/api/watched').then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    ]);
+    _tvWatchedFrac = watched || {};
+    for (const rec of Object.values(prog || {})) {
+      if (rec && rec.type === 'tv' && Number(rec.showId) === Number(showId)
+          && rec.season != null && rec.episode != null) {
+        _tvProgressByEp[`${rec.season}-${rec.episode}`] = { pct: rec.pct || 0, position: rec.position || 0 };
+      }
+    }
+  } catch { /* highlighting is best-effort — never block the modal */ }
+}
+
+// Resolve the stored jobId for an episode (catalog copy first, then the user's
+// library), so we can look up its watched fraction from history.
+function episodeJobId(showId, season, episode) {
+  const cat = catalogData.find(c => c.tmdbId === showId && c.type === 'tv' && c.season == season && c.episode == episode);
+  if (cat?.id) return cat.id;
+  const job = libraryData.find(j => j.tmdbId === showId && j.type === 'tv' && j.season == season && j.episode == episode && j.status !== 'error');
+  return job?.id || null;
+}
+
 async function openTVModal(showId) {
   ensureAwayState();
   try {
@@ -942,6 +976,7 @@ async function openTVModal(showId) {
       (document.getElementById('tvModalRatingWrap') || tvModalSimilar).before(box);
     }).catch(() => {});
 
+    await loadTvWatchState(show.id);
     await renderSeasonTabs(show);
 
     tvModalWrap.hidden = false;
@@ -999,16 +1034,26 @@ async function loadEpisodes(showId, showTitle, showYear, season) {
       );
       const btnLabel = catEp?.streamUrl ? '&#9654;' : '+';
 
+      // Watch state → highlight what's been watched and where the user is up to.
+      const prog       = _tvProgressByEp[`${season}-${ep.episode_number}`];
+      const inProgress = !!(prog && prog.pct >= 5 && prog.pct < 90);
+      const jid        = episodeJobId(showId, season, ep.episode_number);
+      const watched    = !inProgress && jid != null && (_tvWatchedFrac[jid] || 0) >= EP_WATCHED_FRAC;
+      const pct        = inProgress ? Math.min(98, Math.max(4, Math.round(prog.pct))) : 0;
+
       const epEl = document.createElement('div');
-      epEl.className = 'episode-item';
+      epEl.className = 'episode-item'
+        + (watched ? ' episode-watched' : '')
+        + (inProgress ? ' episode-inprogress' : '');
       epEl.innerHTML = `
-        <div class="episode-num">E${e0}</div>
+        <div class="episode-num">E${e0}${watched ? '<span class="episode-check" title="Watched">✓</span>' : ''}</div>
         <div class="episode-info">
           <div class="episode-title">${escHtml(ep.name || '')}</div>
-          <div class="episode-meta">${ep.air_date ? ep.air_date.slice(0, 4) : ''}${ep.runtime ? ' &middot; ' + ep.runtime + 'm' : ''}</div>
+          <div class="episode-meta">${ep.air_date ? ep.air_date.slice(0, 4) : ''}${ep.runtime ? ' &middot; ' + ep.runtime + 'm' : ''}${watched ? ' &middot; <span class="episode-tag">Watched</span>' : ''}</div>
           ${ep.overview ? `<div class="episode-overview">${escHtml(ep.overview)}</div>` : ''}
+          ${inProgress ? `<div class="episode-continue">Continue watching · ${pct}%</div><div class="episode-progress"><div class="episode-progress-fill" style="width:${pct}%"></div></div>` : ''}
         </div>
-        <button class="episode-add-btn${catEp ? ' episode-ready-btn' : ''}" title="${catEp ? 'Play' : 'Request — ready in ~5–60 min'}">${btnLabel}</button>
+        <button class="episode-add-btn${catEp ? ' episode-ready-btn' : ''}" title="${catEp ? (inProgress ? 'Resume' : 'Play') : 'Request — ready in ~5–60 min'}">${btnLabel}</button>
       `;
       epEl.querySelector('.episode-add-btn').addEventListener('click', (e) => {
         const btn = e.currentTarget;
