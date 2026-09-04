@@ -1366,6 +1366,30 @@ a.nav-link { text-decoration: none; }
 
 .episode-list { display: flex; flex-direction: column; gap: 2px; }
 
+.season-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0 12px;
+  border-bottom: 1px solid #1e1e1e;
+  margin-bottom: 4px;
+}
+.season-request-btn {
+  background: var(--red);
+  border: 1px solid var(--red);
+  border-radius: 5px;
+  color: #fff;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  transition: all .2s;
+}
+.season-request-btn:hover:not(:disabled) { filter: brightness(1.12); }
+.season-request-btn:disabled { opacity: .7; cursor: default; }
+.season-have-note { color: #888; font-size: 12px; }
+
 .episode-item {
   display: flex;
   align-items: flex-start;

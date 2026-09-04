@@ -1079,6 +1079,28 @@ async function loadEpisodes(showId, showTitle, showYear, season) {
     }
 
     list.innerHTML = '';
+
+    // "Request full season" — one click grabs the whole season. The backend
+    // prefers a season-pack torrent (which auto-uploads every episode); if none
+    // exists it falls back to fetching the first episode not already available.
+    // Hidden once every episode of the season is in the catalog.
+    const seasonInCatalog = new Set(catalogData
+      .filter(c => c.tmdbId === showId && c.type === 'tv' && c.season == season && c.streamUrl)
+      .map(c => Number(c.episode)));
+    const firstMissing = episodes.find(ep => !seasonInCatalog.has(Number(ep.episode_number)));
+    if (firstMissing) {
+      const have = seasonInCatalog.size;
+      const bar = document.createElement('div');
+      bar.className = 'season-actions';
+      bar.innerHTML = `
+        <button class="season-request-btn" title="Download the whole season — grabs a season pack when available, otherwise starts with the first episode">⬇ Request Full Season</button>
+        ${have ? `<span class="season-have-note">${have}/${episodes.length} ready</span>` : ''}
+      `;
+      bar.querySelector('.season-request-btn').addEventListener('click', (e) =>
+        queueFullSeason(showTitle, showYear, showId, season, firstMissing.episode_number, e.currentTarget));
+      list.appendChild(bar);
+    }
+
     for (const ep of episodes) {
       const s0 = String(season).padStart(2, '0');
       const e0 = String(ep.episode_number).padStart(2, '0');
@@ -1228,6 +1250,38 @@ async function queueWatch(movie) {
     modalWatch.disabled = false;
     console.error('[queueWatch] error:', err);
     toast('Failed to queue: ' + (err?.message || err));
+  }
+}
+
+// Request an entire season in one click. The backend (fullSeason flag) prefers
+// a season-pack torrent — one download that uploads every episode — and only
+// falls back to the single `episode` (the first one not already available) when
+// no pack exists. Episodes appear in the Library/catalog as they finish.
+async function queueFullSeason(showTitle, showYear, showId, season, episode, btn) {
+  const jobTitle = `${showTitle} — Season ${season}`;
+  if (btn) { btn.textContent = '⏳ Requesting…'; btn.disabled = true; }
+
+  try {
+    const res = await fetch('/api/watch', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ type: 'tv', title: jobTitle, showTitle, year: showYear, tmdbId: showId, season, episode, fullSeason: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (btn) { btn.textContent = '⬇ Request Full Season'; btn.disabled = false; }
+      toast(data.error || 'Failed to queue season');
+      return;
+    }
+
+    const { jobId } = data;
+    if (jobId) { currentJobId = jobId; socket.emit('watch:join', jobId); }
+    if (btn) { btn.textContent = '✓ Season requested'; btn.title = 'Requested'; }
+    toast(`📥 Requested ${showTitle} Season ${season} — episodes will appear as they finish.`);
+    fetchLibrary();
+  } catch {
+    if (btn) { btn.textContent = '⬇ Request Full Season'; btn.disabled = false; }
+    toast('Failed to queue season');
   }
 }
 
