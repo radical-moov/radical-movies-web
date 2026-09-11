@@ -238,6 +238,7 @@ async function checkAuth() {
     const init = loggedInUser[0]?.toUpperCase() || '?';
     const ba = $('navAvatarInit'); if (ba) ba.textContent = init;
     const bb = $('bottomAvatar');  if (bb) bb.textContent = init;
+    if (data.isAdmin) { const al = $('navAdminLink'); if (al) al.hidden = false; }
     if (!data.paid) { location.href = '/upgrade'; return; }
     const expiresAt = data.inTrial ? data.trialEndsAt : data.accessExpiresAt;
     if (expiresAt && Date.now() < expiresAt) startExpiryBanner(expiresAt, data.inTrial ? 'trial' : 'access');

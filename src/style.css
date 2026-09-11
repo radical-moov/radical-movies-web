@@ -169,6 +169,8 @@ body.has-trial-banner .lists-section { padding-top: 126px; }
 a.nav-link { text-decoration: none; }
 .nav-link-sound { color: #9a7bff; }
 .nav-link-sound:hover { color: #b9a3ff; }
+.nav-link-admin { color: var(--red); font-weight: 600; }
+.nav-link-admin:hover { color: #ff6680; }
 
 .nav-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
 
