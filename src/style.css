@@ -1705,6 +1705,11 @@ a.nav-link { text-decoration: none; }
 }
 .sub-menu-item:hover { background: rgba(255,255,255,.08); color: #fff; }
 .sub-menu-item.active { color: var(--red); font-weight: 700; }
+.sub-menu-sep { height: 1px; background: #333; margin: 4px 0; }
+.sub-sync-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; gap: 6px; }
+.sub-sync-label { font-size: 12px; color: #bbb; min-width: 46px; text-align: center; font-variant-numeric: tabular-nums; }
+.sub-sync-btn { background: rgba(255,255,255,.08); border: 1px solid #444; color: #bbb; cursor: pointer; border-radius: 4px; padding: 3px 10px; font-size: 14px; font-family: inherit; line-height: 1; }
+.sub-sync-btn:hover { background: rgba(255,255,255,.18); color: #fff; border-color: #666; }
 
 /* ── In-player episodes panel ─────────────────────────────────────────────── */
 .player-btn-episodes { width: auto; padding: 0 12px; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }

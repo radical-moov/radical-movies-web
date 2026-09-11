@@ -1612,12 +1612,59 @@ function closePlayer() {
 // Setting every text track to 'disabled' stops rendering AND clears the cues.
 let _subLoadToken = 0;
 let _subBlobUrls  = [];
+let _subOffsetMs  = 0;    // user-applied timing offset (g/h keys)
+let _subTrackEls  = [];   // <track> elements for the current load
+let _subRawVtts   = [];   // raw VTT text per track (null until fetched)
+
+function vttTimeToMs(ts) {
+  const [h, m, rest] = ts.split(':');
+  const [s, ms] = rest.split('.');
+  return (+h * 3600 + +m * 60 + +s) * 1000 + +ms;
+}
+function msToVttTime(ms) {
+  ms = Math.max(0, ms);
+  const h = Math.floor(ms / 3600000); ms -= h * 3600000;
+  const m = Math.floor(ms / 60000);   ms -= m * 60000;
+  const s = Math.floor(ms / 1000);    ms -= s * 1000;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
+}
+function shiftVtt(vtt, offsetMs) {
+  if (!offsetMs) return vtt;
+  return vtt.replace(/(\d{2}:\d{2}:\d{2}\.\d{3})/g, (_, ts) =>
+    msToVttTime(vttTimeToMs(ts) + offsetMs));
+}
+function formatSubOffset(ms) {
+  const sign = ms >= 0 ? '+' : '−';
+  return `${sign}${(Math.abs(ms) / 1000).toFixed(1)}s`;
+}
+function applySubOffset() {
+  _subTrackEls.forEach((el, i) => {
+    const raw = _subRawVtts[i];
+    if (!raw) return;
+    const prev = el.src;
+    const blobUrl = URL.createObjectURL(new Blob([shiftVtt(raw, _subOffsetMs)], { type: 'text/vtt' }));
+    _subBlobUrls.push(blobUrl);
+    el.src = blobUrl;
+    try { if (prev.startsWith('blob:')) URL.revokeObjectURL(prev); } catch {}
+  });
+  const lbl = document.getElementById('subSyncLabel');
+  if (lbl) lbl.textContent = formatSubOffset(_subOffsetMs);
+}
+function adjustSubOffset(deltaMs) {
+  _subOffsetMs += deltaMs;
+  applySubOffset();
+  toast(`Subtitle: ${formatSubOffset(_subOffsetMs)}`);
+}
+
 function clearSubtitleTracks() {
   _subLoadToken++; // invalidate any pending loadedmetadata handler from a prior load
   for (const tt of videoEl.textTracks) tt.mode = 'disabled';
   videoEl.querySelectorAll('track').forEach(t => t.remove());
   _subBlobUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch {} });
-  _subBlobUrls = [];
+  _subBlobUrls  = [];
+  _subOffsetMs  = 0;
+  _subTrackEls  = [];
+  _subRawVtts   = [];
 }
 
 function loadSubtitlesForJob(jobId, tracks) {
@@ -1634,7 +1681,8 @@ function loadSubtitlesForJob(jobId, tracks) {
   if (!tracks.length) { menu.innerHTML = ''; return; }
 
   const token = _subLoadToken;
-  const trackEls = tracks.map((t) => {
+  _subRawVtts = new Array(tracks.length).fill(null);
+  const trackEls = tracks.map((t, i) => {
     const el = document.createElement('track');
     el.kind    = 'subtitles';
     el.srclang = t.lang;
@@ -1648,20 +1696,32 @@ function loadSubtitlesForJob(jobId, tracks) {
       .then((r) => (r.ok ? r.text() : Promise.reject(r.status)))
       .then((vtt) => {
         if (token !== _subLoadToken) return; // superseded by a newer load
-        const blobUrl = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
+        _subRawVtts[i] = vtt;
+        const shifted  = shiftVtt(vtt, _subOffsetMs);
+        const blobUrl  = URL.createObjectURL(new Blob([shifted], { type: 'text/vtt' }));
         _subBlobUrls.push(blobUrl);
         el.src = blobUrl;
       })
       .catch(() => { el.src = t.url; }); // last-resort fallback to direct URL
     return el;
   });
+  _subTrackEls = trackEls;
 
   // Auto-select an English track when one exists (lang code or label match)
   const enIdx = tracks.findIndex(t =>
     /^en/i.test(t.lang || '') || /english/i.test(t.label || ''));
 
   menu.innerHTML = `<div class="sub-menu-item${enIdx < 0 ? ' active' : ''}" data-idx="-1">Off</div>`
-    + tracks.map((t, i) => `<div class="sub-menu-item${i === enIdx ? ' active' : ''}" data-idx="${i}">${escHtml(t.label)}</div>`).join('');
+    + tracks.map((t, i) => `<div class="sub-menu-item${i === enIdx ? ' active' : ''}" data-idx="${i}">${escHtml(t.label)}</div>`).join('')
+    + `<div class="sub-menu-sep"></div>`
+    + `<div class="sub-sync-row">`
+    + `<button class="sub-sync-btn" id="subSyncMinus" title="Earlier (G)">−</button>`
+    + `<span class="sub-sync-label" id="subSyncLabel">${formatSubOffset(_subOffsetMs)}</span>`
+    + `<button class="sub-sync-btn" id="subSyncPlus" title="Later (H)">+</button>`
+    + `</div>`;
+
+  document.getElementById('subSyncMinus').addEventListener('click', (e) => { e.stopPropagation(); adjustSubOffset(-500); });
+  document.getElementById('subSyncPlus').addEventListener('click',  (e) => { e.stopPropagation(); adjustSubOffset(500);  });
 
   const selectTrack = (idx) => {
     trackEls.forEach((el, i) => {
@@ -3545,6 +3605,8 @@ function setupSearch() {
         case 'ArrowRight': e.preventDefault(); if (videoEl.duration) videoEl.currentTime = Math.min(videoEl.duration, videoEl.currentTime + 10); break;
         case 'ArrowUp':    e.preventDefault(); videoEl.volume = Math.min(1, videoEl.volume + 0.1); break;
         case 'ArrowDown':  e.preventDefault(); videoEl.volume = Math.max(0, videoEl.volume - 0.1); break;
+        case 'g': case 'G': if (_subTrackEls.length) adjustSubOffset(-500); break;
+        case 'h': case 'H': if (_subTrackEls.length) adjustSubOffset(500);  break;
       }
       return;
     }
