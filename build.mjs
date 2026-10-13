@@ -117,4 +117,11 @@ for (const file of fs.readdirSync(SRC).filter((f) => f.endsWith('.html'))) {
 if (PAGES_CNAME) fs.writeFileSync(path.join(OUT, 'CNAME'), PAGES_CNAME + '\n');
 fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
 
+// 4b) SPA fallback for GitHub Pages. Pages has no server-side rewrite, so deep
+// links like /watch/movie/9919/... have no matching file and 404. Serving the
+// built index.html as 404.html lets the SPA boot on any path; app.js's
+// handleDeepLink() reads location.pathname and opens the right modal. (On the VM,
+// nginx already serves index.html for unknown routes — this only matters on Pages.)
+fs.copyFileSync(path.join(OUT, 'index.html'), path.join(OUT, '404.html'));
+
 console.log(`[build] dist/ ready — hashed ${Object.keys(rename).length} assets, rmconfig=${rmconfigOut}, API_BASE=${API_BASE || '(same-origin)'}, cname=${PAGES_CNAME || '(none)'}`);
