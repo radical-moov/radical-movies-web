@@ -1,5 +1,5 @@
 const IMG = 'https://image.tmdb.org/t/p';
-const POSTER = (p) => p ? `${IMG}/w342${p}` : '/no-poster.svg';
+const POSTER = (p) => p ? (/^https?:\/\//.test(p) ? p : `${IMG}/w342${p}`) : '/no-poster.svg';
 const BACKDROP = (b) => b ? `${IMG}/w1280${b}` : '';
 
 // Button label for titles we don't hold yet — sets the expectation that a
@@ -348,11 +348,18 @@ async function init() {
 // history entry is the homepage (Back / close leave you there, not on a dangling
 // /watch URL). Wait for the catalog so the Play/Request button state is correct.
 async function handleDeepLink() {
-  const m = location.pathname.match(/^\/watch\/(movie|tv)\/(\d+)/);
-  if (!m) return;
-  const [, type, id] = m;
+  const m  = location.pathname.match(/^\/watch\/(movie|tv)\/(\d+)/);
+  const mc = location.pathname.match(/^\/watch\/custom\/([^/]+)/);
+  if (!m && !mc) return;
   try { history.replaceState(history.state, '', '/'); } catch {}
   if (!catalogData.length) await fetchCatalog().catch(() => {});
+  if (mc) {
+    // Custom (non-TMDB) title — look it up in our catalog by id and reopen its modal.
+    const item = catalogData.find(c => c.id === decodeURIComponent(mc[1]));
+    if (item) openCustomModal(item); else toast('That title is no longer available');
+    return;
+  }
+  const [, type, id] = m;
   type === 'tv' ? openTVModal(Number(id)) : openModal(Number(id));
 }
 
@@ -809,6 +816,46 @@ function closeModal() {
   document.body.style.overflow = '';
   currentMovie = null;
   clearTitleUrl();
+}
+
+// Details modal for custom (non-TMDB) catalog titles. Reuses the same modal DOM
+// as openModal() but is populated entirely from the catalog item (title, year,
+// quality, synopsis, subtitle languages, poster) — there is no TMDB record to
+// fetch, so none of the TMDB-only extras (cast, similar, trailer, ratings,
+// watchlist, deep-link URL) apply.
+function openCustomModal(item) {
+  ensureAwayState();
+  currentMovie = null;
+
+  modalHero.style.backgroundImage = item.posterPath ? `url(${item.posterPath})` : '';
+  modalTitle.textContent = item.title || '';
+
+  const subLangs = (item.subtitleTracks || []).map(t => String(t.label || t.lang || '')).filter(Boolean);
+  modalMeta.innerHTML = [
+    item.year    ? `<span>${escHtml(String(item.year))}</span>` : '',
+    item.quality ? `<span class="meta-tag meta-quality">${escHtml(item.quality)}</span>` : '',
+    subLangs.length ? `<span class="meta-tag">CC ${escHtml(subLangs.join(' / '))}</span>` : '',
+  ].filter(Boolean).join('');
+
+  modalOverview.textContent = item.overview || '';
+
+  modalRight.innerHTML = [
+    item.titleAr       ? `<div><strong>Original title:</strong> ${escHtml(item.titleAr)}</div>` : '',
+    item.catalogSource ? `<div><strong>Source:</strong> ${escHtml(item.catalogSource)}</div>` : '',
+  ].filter(Boolean).join('');
+
+  modalSimilar.innerHTML = '';
+  // Remove any dynamic extras left over from a previous (TMDB) openModal()
+  ['modalWlBtn', 'modalListBtn', 'modalTrailerBtn', 'modalRatingWrap', 'modalWhyBox'].forEach(id => document.getElementById(id)?.remove());
+
+  modalWatch.textContent = '▶  Play Now';
+  modalWatch.disabled = false;
+  modalWatch.onclick = () => { closeModal(); openPlayer(item.streamUrl, item.title, item.posterPath, item); };
+
+  modalWrap.hidden = false;
+  document.body.style.overflow = 'hidden';
+  // Shareable deep link — /watch/custom/{catalogId}/{slug}; handleDeepLink reopens it.
+  setTitleUrl('custom', item.id, item.title, item.year);
 }
 
 modalClose.addEventListener('click', closeModal);
@@ -2737,7 +2784,9 @@ function renderReadyNowRows() {
 
 function createCatalogCard(item) {
   const card = document.createElement('div');
-  card.className = 'card catalog-card';
+  // card-captioned + card-info-static keep the title/meta persistently visible
+  // (not hover-only), matching the search result cards.
+  card.className = 'card catalog-card card-captioned';
   card.dataset.tmdbId = item.tmdbId;
   card.dataset.mediaType = item.type;
 
@@ -2750,7 +2799,7 @@ function createCatalogCard(item) {
   card.innerHTML = `
     <img class="card-img" src="${POSTER(item.posterPath)}" alt="${escHtml(altText)}" loading="lazy" onerror="this.onerror=null;this.src='/no-poster.svg'">
     <div class="card-play-btn">&#9654;</div>
-    <div class="card-info">
+    <div class="card-info card-info-static">
       <div class="card-title">${escHtml(displayTitle)}</div>
       <div class="card-meta">
         ${year ? `<span>${year}</span>` : ''}
@@ -2766,7 +2815,12 @@ function createCatalogCard(item) {
     loadPosterForCard(card.querySelector('.card-img'), item.tmdbId, item.type);
   }
 
-  const open = () => { if (item.type === 'tv') openTVModal(item.tmdbId); else openModal(item.tmdbId); };
+  const open = () => {
+    // Custom (non-TMDB) catalog titles have no TMDB record — show a details modal
+    // built from the catalog item itself (poster + synopsis + Play).
+    if (!item.tmdbId) { openCustomModal(item); return; }
+    if (item.type === 'tv') openTVModal(item.tmdbId); else openModal(item.tmdbId);
+  };
   makeCardActivatable(card, open, `${displayTitle} — ready to play`);
 
   return card;
@@ -3672,14 +3726,22 @@ async function doSearch(q) {
   const people = results.filter(r => r.media_type === 'person' && (r.profile_path || (r.known_for || []).length))
                         .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
+  // ── Local custom (non-TMDB) catalog titles ──────────────────────────────
+  // These aren't in TMDB, so TMDB /search/multi never returns them. Match them
+  // against our own catalog by title so custom titles are findable via search.
+  const customHits = catalogData.filter(c =>
+    c.type === 'movie' && !c.tmdbId && isVerifiedGood(c) &&
+    (c.title || '').toLowerCase().includes(ql));
+
   // ── Available now: titles from the results we already hold (verified) ──
   renderAvailableNow(movies, shows);
 
-  // Movies
+  // Movies (custom catalog hits first — we definitely have those to play)
   searchGrid.innerHTML = '';
+  for (const c of customHits) searchGrid.appendChild(createCatalogCard(c));
   if (movies.length) {
     for (const m of movies.slice(0, 20)) searchGrid.appendChild(createCard(m, 'movie', { caption: true }));
-  } else {
+  } else if (!customHits.length) {
     searchGrid.innerHTML = '<p style="color:#555;padding:8px 0">No movies found.</p>';
   }
 
@@ -3700,7 +3762,7 @@ async function doSearch(q) {
 
   // Nothing at all — show one friendly empty state instead of "not found"s
   document.getElementById('searchEmptyState')?.remove();
-  const anyResults = movies.length || shows.length || people.length;
+  const anyResults = movies.length || shows.length || people.length || customHits.length;
   if (!anyResults) {
     moviesSection.hidden = true;
     tvSection.hidden = true;
